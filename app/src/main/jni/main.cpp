@@ -19,9 +19,9 @@
 
 #define libName "libil2cpp.so"
 
-struct My_Patches {
+struct My_Patches {   
     MemoryPatch GodMode;
-} hexPatches;
+} hexPatches; 
 
 // ===== Global Context =====
 static jobject gContext = nullptr;
@@ -30,6 +30,15 @@ static JavaVM* gJvm = nullptr;
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     gJvm = vm;
     return JNI_VERSION_1_6;
+}
+
+// Dipanggil dari Loader.java setelah .so loaded dan context tersedia
+extern "C" JNIEXPORT void JNICALL
+Java_com_android_support_Loader_initNativeContext(JNIEnv* env, jclass clazz, jobject context) {
+    if (gContext != nullptr) {
+        env->DeleteGlobalRef(gContext);
+    }
+    gContext = env->NewGlobalRef(context);
 }
 
 // ===== Helper Functions =====
@@ -47,168 +56,148 @@ static bool copyFile(const char *src, const char *dst) {
     return in && out;
 }
 
-// ===== AUTO DETECT GAME FOLDER =====
-static std::string getExternalFilesDir(JNIEnv* env, jobject context) {
-    jclass contextClass = env->GetObjectClass(context);
+// ===== Get External Files Dir via JNI =====
+static std::string getExternalFilesDir() {
+    if (gJvm == nullptr || gContext == nullptr) return "";
 
+    JNIEnv* env = nullptr;
+    bool attached = false;
+    int status = gJvm->GetEnv((void**)&env, JNI_VERSION_1_6);
+    if (status == JNI_EDETACHED) {
+        gJvm->AttachCurrentThread(&env, nullptr);
+        attached = true;
+    }
+    if (env == nullptr) return "";
+
+    jclass contextClass = env->GetObjectClass(gContext);
     jmethodID getExternalFilesDir = env->GetMethodID(contextClass,
-        "getExternalFilesDir",
-        "(Ljava/lang/String;)Ljava/io/File;");
+        "getExternalFilesDir", "(Ljava/lang/String;)Ljava/io/File;");
 
-    jobject filesDir = env->CallObjectMethod(context, getExternalFilesDir, nullptr);
+    jobject filesDir = env->CallObjectMethod(gContext, getExternalFilesDir, nullptr);
 
     if (filesDir == nullptr) {
         jmethodID getFilesDir = env->GetMethodID(contextClass, "getFilesDir", "()Ljava/io/File;");
-        filesDir = env->CallObjectMethod(context, getFilesDir);
+        filesDir = env->CallObjectMethod(gContext, getFilesDir);
     }
 
     jclass fileClass = env->FindClass("java/io/File");
     jmethodID getAbsolutePath = env->GetMethodID(fileClass, "getAbsolutePath", "()Ljava/lang/String;");
-
     jstring pathStr = (jstring)env->CallObjectMethod(filesDir, getAbsolutePath);
 
     const char* path = env->GetStringUTFChars(pathStr, nullptr);
     std::string result(path);
     env->ReleaseStringUTFChars(pathStr, path);
 
+    if (attached) gJvm->DetachCurrentThread();
+
     return result;
 }
 
-// ===== Backup/Restore Functions =====
+// ===== Backup/Restore =====
 static void backupInventory() {
-    if (gJvm == nullptr || gContext == nullptr) return;
+    std::string basePath = getExternalFilesDir();
+    if (basePath.empty()) {
+        printf("backupInventory: context not ready\n");
+        return;
+    }
 
-    JNIEnv* env;
-    gJvm->AttachCurrentThread(&env, nullptr);
-
-    std::string basePath = getExternalFilesDir(env, gContext);
     std::string backupDir = basePath + "/backup/";
-
     mkdir(backupDir.c_str(), 0777);
 
     const char *slots[] = {"Slot_0", "Slot_1", "Slot_2"};
-    int backupCount = 0;
-
+    int count = 0;
     for (const char *slot : slots) {
         std::string src = basePath + "/" + slot + "/the_inventory";
         std::string dst = backupDir + slot + "_the_inventory";
-
         if (fileExists(src.c_str())) {
             if (copyFile(src.c_str(), dst.c_str())) {
                 printf("Backup %s: OK\n", slot);
-                backupCount++;
+                count++;
             } else {
                 printf("Backup %s: FAILED\n", slot);
             }
         } else {
-            printf("Backup %s: SKIPPED (no inventory)\n", slot);
+            printf("Backup %s: SKIPPED\n", slot);
         }
     }
-
-    printf("Backup complete: %d/3 slots | Path: %s\n", backupCount, basePath.c_str());
+    printf("Backup done: %d/3 | %s\n", count, basePath.c_str());
 }
 
 static void loadBackup() {
-    if (gJvm == nullptr || gContext == nullptr) return;
+    std::string basePath = getExternalFilesDir();
+    if (basePath.empty()) {
+        printf("loadBackup: context not ready\n");
+        return;
+    }
 
-    JNIEnv* env;
-    gJvm->AttachCurrentThread(&env, nullptr);
-
-    std::string basePath = getExternalFilesDir(env, gContext);
     std::string backupDir = basePath + "/backup/";
-
     const char *slots[] = {"Slot_0", "Slot_1", "Slot_2"};
-    int restoreCount = 0;
-
+    int count = 0;
     for (const char *slot : slots) {
         std::string src = backupDir + slot + "_the_inventory";
         std::string dst = basePath + "/" + slot + "/the_inventory";
-
         if (fileExists(src.c_str())) {
             if (copyFile(src.c_str(), dst.c_str())) {
                 printf("Restore %s: OK\n", slot);
-                restoreCount++;
+                count++;
             } else {
                 printf("Restore %s: FAILED\n", slot);
             }
         } else {
-            printf("Restore %s: SKIPPED (backup not found)\n", slot);
+            printf("Restore %s: SKIPPED\n", slot);
         }
     }
-
-    printf("Restore complete: %d/3 slots | Path: %s\n", restoreCount, basePath.c_str());
+    printf("Restore done: %d/3 | %s\n", count, basePath.c_str());
 }
-// ===== End Backup/Restore =====
 
-extern "C" {
-    JNIEXPORT void JNICALL
-    Java_com_android_support_Main_Start(
-        JNIEnv *env, jclass clazz, jobject context) {
-        gContext = env->NewGlobalRef(context);
+extern "C" {	
+    JNIEXPORT jstring JNICALL
+    Java_com_android_support_Loader_setTitleText(JNIEnv *env, jobject obj) {
+        return env->NewStringUTF("Hybrid Animals");
     }
 
     JNIEXPORT jstring JNICALL
-    Java_com_android_support_Loader_setTitleText(
-        JNIEnv *env, jobject activityObject) {
-        return env->NewStringUTF("Modded by FrostyDev");
-    }
-
-    JNIEXPORT jstring JNICALL
-    Java_com_android_support_Loader_setHeadingText(
-        JNIEnv *env, jobject activityObject) {
-        return env->NewStringUTF("Mod Dupe Item | Hybrid Animals");
+    Java_com_android_support_Loader_setHeadingText(JNIEnv *env, jobject obj) {
+        return env->NewStringUTF("Dupe Item Tool");
     }
 
     JNIEXPORT jobjectArray JNICALL
-    Java_com_android_support_Loader_GetFeatureList(
-        JNIEnv *env, jobject activityObject) {
-
+    Java_com_android_support_Loader_GetFeatureList(JNIEnv *env, jobject obj) {
         const char *features[] = {
             "Button_Backup Inventory",
             "Button_Load Backup",
+            "WhatsApp_6281241462583_Chat Owner",  // ganti 62xxxxxxxx dengan nomor WA lo
             "Hide_Icon invisible",
             "Close_Close menu",
         };
 
-        int Total_Feature = sizeof(features) / sizeof(features[0]);
+        int total = sizeof(features) / sizeof(features[0]);
         jobjectArray ret = env->NewObjectArray(
-            Total_Feature,
+            total,
             env->FindClass("java/lang/String"),
             env->NewStringUTF("")
         );
-
-        for (int i = 0; i < Total_Feature; i++) {
+        for (int i = 0; i < total; i++) {
             env->SetObjectArrayElement(ret, i, env->NewStringUTF(features[i]));
         }
         return ret;
-    }
+    } 
 
     JNIEXPORT void JNICALL
-    Java_com_android_support_Loader_Changes(
-        JNIEnv *env, jobject activityObject, jint feature, jint value) {
-
+    Java_com_android_support_Loader_Changes(JNIEnv *env, jobject obj, jint feature, jint value) {
         switch (feature) {
-            case 0:  // Backup Inventory
-                backupInventory();
-                break;
-            case 1:  // Load Backup
-                loadBackup();
-                break;
-            case 2:  // Hide Icon
-                break;
-            case 3:  // Close menu
-                break;
+            case 0: backupInventory(); break;
+            case 1: loadBackup(); break;
+            default: break;
         }
     }
 }
 
 void *hack_thread(void *) {
-    do {
-        sleep(1);
-    } while (!isLibraryLoaded(libName));
+    do { sleep(1); } while (!isLibraryLoaded(libName));
     return NULL;
 }
-
+    
 __attribute__((constructor))
 void lib_main() {
     pthread_t ptid;
