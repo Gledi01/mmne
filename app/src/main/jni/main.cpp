@@ -66,7 +66,7 @@ extern "C" {
     Java_com_android_support_Loader_setTitleText(
         JNIEnv *env,
         jobject activityObject) {
-        jstring str = env->NewStringUTF("Modded by Darkside");
+        jstring str = env->NewStringUTF("Modded by FrostyDev");
         return str;
     }
 
@@ -74,7 +74,7 @@ extern "C" {
     Java_com_android_support_Loader_setHeadingText(
         JNIEnv *env,
         jobject activityObject) {
-        jstring str = env->NewStringUTF("No Permission Mod Menu | by Darkside");
+        jstring str = env->NewStringUTF("Mod Dupe Item | Hybrid Animals");
         return str;
     }
 
