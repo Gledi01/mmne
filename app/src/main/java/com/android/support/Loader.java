@@ -23,7 +23,6 @@ public class Loader
 	protected LinearLayout childOfScroll;
 	
 	public static native void Changes(int feature, int value);
-
     native String[] GetFeatureList();
 	
 	public static boolean hide;
@@ -32,12 +31,15 @@ public class Loader
     native String Icon();
     native String setTitleText();
     native String setHeadingText();
+
+	// Native method untuk pass context ke C++
+	public static native void initNativeContext(Context context);
 	
 	public static void Start(final Context context)
 	{
         System.loadLibrary("DarkTeam");
         Handler handler = new Handler();
-	   	handler.postDelayed(new Runnable() {
+   		handler.postDelayed(new Runnable() {
                 @Override
                 public void run() {
 					new Loader().initFloating(context);
@@ -48,9 +50,13 @@ public class Loader
 	public final void initFloating(final Context context)
 	{      
 		Loader.context = context;
+
+		// Pass context ke C++ setelah .so loaded
+		initNativeContext(context);
+
 		Menu menu = new Menu(context);
 		menu.setWidth(menu.dpi(300));
-		menu.setHeight(menu.dpi(250));
+		menu.setHeight(menu.dpi(300));
 		menu.setIconImage(Icon());
 		menu.setTitle(setTitleText());
         
@@ -60,6 +66,7 @@ public class Loader
         Title.setTextSize(13.5f);
         Title.setGravity(Gravity.CENTER);
 		menu.getChildOfScroll().addView(Title);
+
 		String[] listFT = GetFeatureList();
         for (int i = 0; i < listFT.length; i++) {
             final int feature = i;
@@ -78,6 +85,20 @@ public class Loader
 							Changes(feature, 0);
 						}
 					}); 
+			} else if (str.contains("WhatsApp_")) {
+				final String waNumber = split[1];
+				menu.ButtonWA(split[2], new Menu.ibt() {
+						public void OnWrite() {
+							try {
+								Intent intent = new Intent(Intent.ACTION_VIEW);
+								intent.setData(Uri.parse("https://wa.me/" + waNumber));
+								intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+								context.startActivity(intent);
+							} catch (Exception e) {
+								e.printStackTrace();
+							}
+						}
+					});
 			} else if (str.contains("Hide_")) {
                 menu.ButtonOnOff(feature, split[1], new Menu.ibt() {
 						public void OnWrite() {
@@ -93,13 +114,12 @@ public class Loader
 			} else if (str.contains("Text_")) {
                 menu.addText(str.replace("Text_", ""));                                            
 			} else if (str.contains("SeekBar_")) {
-
 				menu.SeekBar(feature, split[1], Integer.parseInt(split[2]), Integer.parseInt(split[3]), new Menu.iit() {
 						public void OnWrite(int i) {
 							Changes(feature, i);
 						}
 					});
-			     }
+		      }
 		      }
 	        }
-          }
+}
