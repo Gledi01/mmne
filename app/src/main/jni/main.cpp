@@ -9,7 +9,7 @@
 #include <iostream>
 #include <dlfcn.h>
 #include <sys/stat.h>
-#include <stdio.h>  // Tambahin buat printf
+#include <stdio.h>
 #include "KittyMemory/MemoryPatch.h"
 #include "Includes/Utils.h"
 #include "Icon.h"
@@ -23,7 +23,12 @@ struct My_Patches {
     MemoryPatch GodMode;
 } hexPatches; 
 
-// ===== Backup/Restore Functions =====
+// ===== Helper Functions =====
+static bool fileExists(const char *path) {
+    struct stat buffer;
+    return (stat(path, &buffer) == 0);
+}
+
 static bool copyFile(const char *src, const char *dst) {
     std::ifstream in(src, std::ios::binary);
     if (!in) return false;
@@ -33,31 +38,76 @@ static bool copyFile(const char *src, const char *dst) {
     return in && out;
 }
 
-static void backupInventory() {
-    const char *slots[] = {"Slot_0", "Slot_1", "Slot_2"};
-    const char *base = "/data/data/com.abstractsoft.hybridanimals/files/";
-    std::string backupDir = std::string(base) + "backup/";
-    mkdir(backupDir.c_str(), 0777);
+// ===== AUTO DETECT GAME FOLDER! =====
+static std::string getInternalFilesDir(JNIEnv* env, jobject context) {
+    jclass contextClass = env->GetObjectClass(context);
+    jmethodID getFilesDir = env->GetMethodID(contextClass, "getFilesDir", "()Ljava/io/File;");
+    jobject filesDir = env->CallObjectMethod(context, getFilesDir);
     
-    for (const char *slot : slots) {
-        std::string src = std::string(base) + slot + "/the_inventory";
-        std::string dst = backupDir + slot + "_the_inventory";
-        bool ok = copyFile(src.c_str(), dst.c_str());
-        printf("Backup %s: %s\n", slot, ok ? "OK" : "FAILED");
-    }
+    jclass fileClass = env->FindClass("java/io/File");
+    jmethodID getAbsolutePath = env->GetMethodID(fileClass, "getAbsolutePath", "()Ljava/lang/String;");
+    jstring pathStr = (jstring)env->CallObjectMethod(filesDir, getAbsolutePath);
+    
+    const char* path = env->GetStringUTFChars(pathStr, nullptr);
+    std::string result(path);
+    env->ReleaseStringUTFChars(pathStr, path);
+    
+    return result;
 }
 
-static void loadBackup() {
+// ===== Backup/Restore Functions =====
+static void backupInventory(JNIEnv* env, jobject context) {
+    std::string basePath = getInternalFilesDir(env, context);
+    std::string backupDir = basePath + "/backup/";
+    
+    mkdir(backupDir.c_str(), 0777);
+    
     const char *slots[] = {"Slot_0", "Slot_1", "Slot_2"};
-    const char *base = "/data/data/com.abstractsoft.hybridanimals/files/";
-    std::string backupDir = std::string(base) + "backup/";
+    int backupCount = 0;
+    
+    for (const char *slot : slots) {
+        std::string src = basePath + "/" + slot + "/the_inventory";
+        std::string dst = backupDir + slot + "_the_inventory";
+        
+        if (fileExists(src.c_str())) {
+            if (copyFile(src.c_str(), dst.c_str())) {
+                printf("Backup %s: OK\n", slot);
+                backupCount++;
+            } else {
+                printf("Backup %s: FAILED\n", slot);
+            }
+        } else {
+            printf("Backup %s: SKIPPED (no inventory)\n", slot);
+        }
+    }
+    
+    printf("Backup complete: %d/%d slots\n", backupCount, 3);
+}
+
+static void loadBackup(JNIEnv* env, jobject context) {
+    std::string basePath = getInternalFilesDir(env, context);
+    std::string backupDir = basePath + "/backup/";
+    
+    const char *slots[] = {"Slot_0", "Slot_1", "Slot_2"};
+    int restoreCount = 0;
     
     for (const char *slot : slots) {
         std::string src = backupDir + slot + "_the_inventory";
-        std::string dst = std::string(base) + slot + "/the_inventory";
-        bool ok = copyFile(src.c_str(), dst.c_str());
-        printf("Restore %s: %s\n", slot, ok ? "OK" : "FAILED");
+        std::string dst = basePath + "/" + slot + "/the_inventory";
+        
+        if (fileExists(src.c_str())) {
+            if (copyFile(src.c_str(), dst.c_str())) {
+                printf("Restore %s: OK\n", slot);
+                restoreCount++;
+            } else {
+                printf("Restore %s: FAILED\n", slot);
+            }
+        } else {
+            printf("Restore %s: SKIPPED (backup not found)\n", slot);
+        }
     }
+    
+    printf("Restore complete: %d/%d slots\n", restoreCount, 3);
 }
 // ===== End Backup/Restore =====
 
@@ -110,18 +160,21 @@ extern "C" {
         jobject activityObject,
         jint feature,
         jint value) {
+        
+        jobject context = activityObject;
+        
         switch (feature) {
             case 0:  // Backup Inventory
-                backupInventory();
+                backupInventory(env, context);
                 break;
             case 1:  // Load Backup
-                loadBackup();
+                loadBackup(env, context);
                 break;
             case 2:  // Hide Icon (toggle)
-                // Fungsi hide icon - nanti dihandle di Java
+                // Handle di Java
                 break;
             case 3:  // Close menu
-                // Fungsi close - nanti dihandle di Java
+                // Handle di Java
                 break;
             default:
                 break;
