@@ -13,7 +13,7 @@
 #include "KittyMemory/MemoryPatch.h"
 #include "Includes/Utils.h"
 #include "Icon.h"
-	 
+
 #include <Substrate/SubstrateHook.h>
 #include <Substrate/CydiaSubstrate.h>
 
@@ -38,14 +38,27 @@ static bool copyFile(const char *src, const char *dst) {
     return in && out;
 }
 
-// ===== AUTO DETECT GAME FOLDER! =====
-static std::string getInternalFilesDir(JNIEnv* env, jobject context) {
+// ===== AUTO DETECT GAME FOLDER (EXTERNAL FILES) =====
+static std::string getExternalFilesDir(JNIEnv* env, jobject context) {
     jclass contextClass = env->GetObjectClass(context);
-    jmethodID getFilesDir = env->GetMethodID(contextClass, "getFilesDir", "()Ljava/io/File;");
-    jobject filesDir = env->CallObjectMethod(context, getFilesDir);
+    
+    // getExternalFilesDir(null)
+    jmethodID getExternalFilesDir = env->GetMethodID(contextClass, 
+        "getExternalFilesDir", 
+        "(Ljava/lang/String;)Ljava/io/File;");
+    
+    // Pass null as parameter
+    jobject filesDir = env->CallObjectMethod(context, getExternalFilesDir, nullptr);
+    
+    if (filesDir == nullptr) {
+        // Fallback ke internal jika external gagal
+        jmethodID getFilesDir = env->GetMethodID(contextClass, "getFilesDir", "()Ljava/io/File;");
+        filesDir = env->CallObjectMethod(context, getFilesDir);
+    }
     
     jclass fileClass = env->FindClass("java/io/File");
     jmethodID getAbsolutePath = env->GetMethodID(fileClass, "getAbsolutePath", "()Ljava/lang/String;");
+    
     jstring pathStr = (jstring)env->CallObjectMethod(filesDir, getAbsolutePath);
     
     const char* path = env->GetStringUTFChars(pathStr, nullptr);
@@ -57,7 +70,7 @@ static std::string getInternalFilesDir(JNIEnv* env, jobject context) {
 
 // ===== Backup/Restore Functions =====
 static void backupInventory(JNIEnv* env, jobject context) {
-    std::string basePath = getInternalFilesDir(env, context);
+    std::string basePath = getExternalFilesDir(env, context);
     std::string backupDir = basePath + "/backup/";
     
     mkdir(backupDir.c_str(), 0777);
@@ -81,11 +94,11 @@ static void backupInventory(JNIEnv* env, jobject context) {
         }
     }
     
-    printf("Backup complete: %d/%d slots\n", backupCount, 3);
+    printf("Backup complete: %d/%d slots | Path: %s\n", backupCount, 3, basePath.c_str());
 }
 
 static void loadBackup(JNIEnv* env, jobject context) {
-    std::string basePath = getInternalFilesDir(env, context);
+    std::string basePath = getExternalFilesDir(env, context);
     std::string backupDir = basePath + "/backup/";
     
     const char *slots[] = {"Slot_0", "Slot_1", "Slot_2"};
@@ -107,42 +120,36 @@ static void loadBackup(JNIEnv* env, jobject context) {
         }
     }
     
-    printf("Restore complete: %d/%d slots\n", restoreCount, 3);
+    printf("Restore complete: %d/%d slots | Path: %s\n", restoreCount, 3, basePath.c_str());
 }
 // ===== End Backup/Restore =====
 
 extern "C" {	
-	
     JNIEXPORT jstring JNICALL
     Java_com_android_support_Loader_setTitleText(
-        JNIEnv *env,
-        jobject activityObject) {
-        jstring str = env->NewStringUTF("Modded by FrostyDev");
-        return str;
+        JNIEnv *env, jobject activityObject) {
+        return env->NewStringUTF("Modded by FrostyDev");
     }
 
     JNIEXPORT jstring JNICALL
     Java_com_android_support_Loader_setHeadingText(
-        JNIEnv *env,
-        jobject activityObject) {
-        jstring str = env->NewStringUTF("Mod Dupe Item | Hybrid Animals");
-        return str;
+        JNIEnv *env, jobject activityObject) {
+        return env->NewStringUTF("Mod Dupe Item | Hybrid Animals");
     }
 
     JNIEXPORT jobjectArray JNICALL
     Java_com_android_support_Loader_GetFeatureList(
-        JNIEnv *env,
-        jobject activityObject) {
-        jobjectArray ret;
+        JNIEnv *env, jobject activityObject) {
+        
         const char *features[] = {          	   
-            "Button_Backup Inventory",           // 0
-            "Button_Load Backup",                // 1
-            "Hide_Icon invisible",               // 2
-            "Close_Close menu",                  // 3
+            "Button_Backup Inventory",           
+            "Button_Load Backup",                
+            "Hide_Icon invisible",               
+            "Close_Close menu",                  
         };
 
-        int Total_Feature = (sizeof features / sizeof features[0]); 
-        ret = (jobjectArray) env->NewObjectArray(
+        int Total_Feature = sizeof(features) / sizeof(features[0]); 
+        jobjectArray ret = env->NewObjectArray(
             Total_Feature, 
             env->FindClass("java/lang/String"),
             env->NewStringUTF("")
@@ -151,32 +158,25 @@ extern "C" {
         for (int i = 0; i < Total_Feature; i++) {
             env->SetObjectArrayElement(ret, i, env->NewStringUTF(features[i]));
         }
-        return (ret);
+        return ret;
     } 
 
     JNIEXPORT void JNICALL
     Java_com_android_support_Loader_Changes(
-        JNIEnv *env,
-        jobject activityObject,
-        jint feature,
-        jint value) {
-        
-        jobject context = activityObject;
+        JNIEnv *env, jobject activityObject, jint feature, jint value) {
         
         switch (feature) {
             case 0:  // Backup Inventory
-                backupInventory(env, context);
+                backupInventory(env, activityObject);
                 break;
             case 1:  // Load Backup
-                loadBackup(env, context);
+                loadBackup(env, activityObject);
                 break;
-            case 2:  // Hide Icon (toggle)
-                // Handle di Java
+            case 2:  // Hide Icon
+                // Handle di Java side
                 break;
             case 3:  // Close menu
-                // Handle di Java
-                break;
-            default:
+                // Handle di Java side
                 break;
         }
     }
