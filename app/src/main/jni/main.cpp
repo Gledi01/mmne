@@ -9,6 +9,7 @@
 #include <iostream>
 #include <dlfcn.h>
 #include <sys/stat.h>
+#include <stdio.h>  // Tambahin buat printf
 #include "KittyMemory/MemoryPatch.h"
 #include "Includes/Utils.h"
 #include "Icon.h"
@@ -42,7 +43,7 @@ static void backupInventory() {
         std::string src = std::string(base) + slot + "/the_inventory";
         std::string dst = backupDir + slot + "_the_inventory";
         bool ok = copyFile(src.c_str(), dst.c_str());
-        LOGI("Backup %s: %s", slot, ok ? "OK" : "FAILED");
+        printf("Backup %s: %s\n", slot, ok ? "OK" : "FAILED");
     }
 }
 
@@ -55,7 +56,7 @@ static void loadBackup() {
         std::string src = backupDir + slot + "_the_inventory";
         std::string dst = std::string(base) + slot + "/the_inventory";
         bool ok = copyFile(src.c_str(), dst.c_str());
-        LOGI("Restore %s: %s", slot, ok ? "OK" : "FAILED");
+        printf("Restore %s: %s\n", slot, ok ? "OK" : "FAILED");
     }
 }
 // ===== End Backup/Restore =====
