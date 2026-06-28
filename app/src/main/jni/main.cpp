@@ -284,25 +284,24 @@ Java_com_android_support_Loader_Changes(JNIEnv* env, jobject obj, jint feature, 
 void* hack_thread(void*) {
     do { sleep(1); } while(!isLibraryLoaded(libName));
 
-    uintptr_t base = getLibraryBase(libName);
     void* handle = dlopen(libName, RTLD_NOLOAD);
     if(!handle) return nullptr;
 
     fn_il2cpp_string_new = (il2cpp_string_new_t)dlsym(handle, "il2cpp_string_new");
 
-    // Assign all function pointers
-    fn_OverwriteExp      = (OverwriteCurrentExp_t) (base + 0xCF4250);
-    fn_OverwriteLevel    = (OverwritePlayerLevel_t)(base + 0xCE8D2C);
-    fn_OverwriteSkillPts = (OverwriteSkillPoints_t)(base + 0xCF4198);
-    fn_GiveItem          = (GiveItemStr_t)          (base + 0xB56710);
-    fn_GenLootChest      = (GenerateLootChest_t)    (base + 0xB9367C);
-    fn_AddManyLoots      = (AddManyLoots_t)         (base + 0xB929CC);
-    fn_TryRollCreature   = (TryRollCreature_t)      (base + 0xC1B3B0);
-    fn_IncCompanionExp   = (IncreaseCompanionExp_t) (base + 0xC797E4);
-    fn_SetLevel          = (SetLevel_t)             (base + 0xCA6758);
-    fn_CycleInvincible   = (CycleInvincibility_t)  (base + 0xB08BA4);
-    fn_CycleInstaKill    = (CycleInstaKill_t)       (base + 0xB08C0C);
-    fn_CycleEnemySee     = (CycleEnemiesCanSeeYou_t)(base + 0xB085F0);
+    // Assign all function pointers via getAbsoluteAddress
+    fn_OverwriteExp      = (OverwriteCurrentExp_t) getAbsoluteAddress(libName, 0xCF4250);
+    fn_OverwriteLevel    = (OverwritePlayerLevel_t)getAbsoluteAddress(libName, 0xCE8D2C);
+    fn_OverwriteSkillPts = (OverwriteSkillPoints_t)getAbsoluteAddress(libName, 0xCF4198);
+    fn_GiveItem          = (GiveItemStr_t)          getAbsoluteAddress(libName, 0xB56710);
+    fn_GenLootChest      = (GenerateLootChest_t)    getAbsoluteAddress(libName, 0xB9367C);
+    fn_AddManyLoots      = (AddManyLoots_t)         getAbsoluteAddress(libName, 0xB929CC);
+    fn_TryRollCreature   = (TryRollCreature_t)      getAbsoluteAddress(libName, 0xC1B3B0);
+    fn_IncCompanionExp   = (IncreaseCompanionExp_t) getAbsoluteAddress(libName, 0xC797E4);
+    fn_SetLevel          = (SetLevel_t)             getAbsoluteAddress(libName, 0xCA6758);
+    fn_CycleInvincible   = (CycleInvincibility_t)  getAbsoluteAddress(libName, 0xB08BA4);
+    fn_CycleInstaKill    = (CycleInstaKill_t)       getAbsoluteAddress(libName, 0xB08C0C);
+    fn_CycleEnemySee     = (CycleEnemiesCanSeeYou_t)getAbsoluteAddress(libName, 0xB085F0);
 
     // Resolve static instances via IL2CPP API
     typedef void* (*dom_get_t)();
