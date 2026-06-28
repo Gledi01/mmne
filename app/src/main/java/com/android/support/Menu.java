@@ -109,7 +109,7 @@ public class Menu
 		return Color.argb(a, r, g, b);
 	}
 
-	private GradientDrawable makeButtonBg(boolean filled) {
+	public GradientDrawable makeButtonBg(boolean filled) {
 		GradientDrawable gd = new GradientDrawable();
 		gd.setShape(GradientDrawable.RECTANGLE);
 		gd.setCornerRadius(12.0f);
