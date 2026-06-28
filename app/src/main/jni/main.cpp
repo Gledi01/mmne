@@ -19,7 +19,7 @@
 
 #define libName "libil2cpp.so"
 
-static JavaVM* gJvm = nullptr;
+static JavaVM* gJvm     = nullptr;
 static jobject gContext = nullptr;
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
@@ -33,27 +33,45 @@ Java_com_android_support_Loader_initNativeContext(JNIEnv* env, jclass clazz, job
     gContext = env->NewGlobalRef(context);
 }
 
-// ===== Toast Helper =====
+// ===== Toast Helper — aman dari background thread =====
 static void showToast(const char* msg) {
     if (!gJvm || !gContext) return;
-    JNIEnv* env = nullptr; bool att = false;
+    JNIEnv* env = nullptr;
+    bool att = false;
     if (gJvm->GetEnv((void**)&env, JNI_VERSION_1_6) == JNI_EDETACHED) {
-        gJvm->AttachCurrentThread(&env, nullptr); att = true;
+        gJvm->AttachCurrentThread(&env, nullptr);
+        att = true;
     }
     if (!env) return;
 
-    jclass toastClass = env->FindClass("android/widget/Toast");
-    jmethodID makeText = env->GetStaticMethodID(toastClass, "makeText",
-        "(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;");
-    jmethodID show = env->GetMethodID(toastClass, "show", "()V");
-    jstring jmsg = env->NewStringUTF(msg);
-    jobject toast = env->CallStaticObjectMethod(toastClass, makeText, gContext, jmsg, 0); // LENGTH_SHORT=0
-    env->CallVoidMethod(toast, show);
-    env->DeleteLocalRef(jmsg);
-    env->DeleteLocalRef(toast);
+    // Pastikan thread ini punya Looper (Toast butuh Looper)
+    jclass looperCls = env->FindClass("android/os/Looper");
+    if (looperCls) {
+        jmethodID myLooper = env->GetStaticMethodID(looperCls, "myLooper", "()Landroid/os/Looper;");
+        jobject looper = env->CallStaticObjectMethod(looperCls, myLooper);
+        if (!looper) {
+            jmethodID prepare = env->GetStaticMethodID(looperCls, "prepare", "()V");
+            env->CallStaticVoidMethod(looperCls, prepare);
+            env->ExceptionClear();
+        }
+    }
+    env->ExceptionClear();
+
+    jclass toastCls = env->FindClass("android/widget/Toast");
+    if (toastCls) {
+        jmethodID makeText = env->GetStaticMethodID(toastCls, "makeText",
+            "(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;");
+        jmethodID show = env->GetMethodID(toastCls, "show", "()V");
+        jstring jmsg = env->NewStringUTF(msg);
+        jobject toast = env->CallStaticObjectMethod(toastCls, makeText, gContext, jmsg, (jint)0);
+        if (toast) { env->CallVoidMethod(toast, show); env->DeleteLocalRef(toast); }
+        env->DeleteLocalRef(jmsg);
+    }
+    env->ExceptionClear();
 
     if (att) gJvm->DetachCurrentThread();
 }
+
 
 // ===== IL2CPP String =====
 typedef void* (*il2cpp_string_new_t)(const char*);
@@ -69,7 +87,6 @@ typedef void* (*asm_get_image_t)(void*);
 typedef void* (*class_from_name_t)(void*, const char*, const char*);
 typedef void* (*get_field_t)(void*, const char*);
 typedef void  (*field_static_get_t)(void*, void*);
-typedef void  (*field_static_set_t)(void*, void*);
 
 static dom_get_t          il2cpp_domain_get                = nullptr;
 static dom_asm_open_t     il2cpp_domain_assembly_open      = nullptr;
@@ -118,7 +135,8 @@ static void* inst_CreativeMode        = nullptr;
 static void* inst_ConsoleControl      = nullptr;
 
 static void* resolveInstance(const char* className) {
-    if (!gImage) return nullptr;
+    if (!gImage || !il2cpp_class_from_name || !il2cpp_class_get_field_from_name || !il2cpp_field_static_get_value)
+        return nullptr;
     void* cls = il2cpp_class_from_name(gImage, "", className);
     if (!cls) return nullptr;
     void* f = il2cpp_class_get_field_from_name(cls, "Instance");
@@ -149,50 +167,24 @@ static int val_stone    = 0;
 static int val_comp_exp = 0;
 static int val_pet_lvl  = 1;
 
-// ===== Actions =====
-#define CHECK_READY() if (!gLibReady) { showToast("⏳ Tunggu! il2cpp belum siap..."); return; }
+#define CHECK_READY() if (!gLibReady) { showToast("Tunggu! Mod belum siap..."); return; }
 
-static void doSetExp(int v) {
-    CHECK_READY();
-    refreshInstances();
-    if (fn_OverwriteExp && inst_GameController)
-        fn_OverwriteExp(inst_GameController, v, nullptr, nullptr);
-}
-static void doSetLevel(int v) {
-    CHECK_READY();
-    refreshInstances();
-    if (fn_OverwriteLevel && inst_GameController)
-        fn_OverwriteLevel(inst_GameController, v, nullptr, nullptr);
-}
-static void doSetSkillPts(int v) {
-    CHECK_READY();
-    refreshInstances();
-    if (fn_OverwriteSkillPts && inst_GameController)
-        fn_OverwriteSkillPts(inst_GameController, v, nullptr, nullptr);
-}
+static void doSetExp(int v)      { CHECK_READY(); refreshInstances(); if (fn_OverwriteExp      && inst_GameController)      fn_OverwriteExp(inst_GameController, v, nullptr, nullptr); }
+static void doSetLevel(int v)    { CHECK_READY(); refreshInstances(); if (fn_OverwriteLevel    && inst_GameController)      fn_OverwriteLevel(inst_GameController, v, nullptr, nullptr); }
+static void doSetSkillPts(int v) { CHECK_READY(); refreshInstances(); if (fn_OverwriteSkillPts && inst_GameController)      fn_OverwriteSkillPts(inst_GameController, v, nullptr, nullptr); }
+static void doGenLootChest()     { CHECK_READY(); refreshInstances(); if (fn_GenLootChest      && inst_LootControl)         fn_GenLootChest(inst_LootControl, nullptr, nullptr); }
+static void doAddManyLoots()     { CHECK_READY(); refreshInstances(); if (fn_AddManyLoots      && inst_LootControl)         fn_AddManyLoots(inst_LootControl, 5, 10, nullptr, 3, 6, nullptr, nullptr, nullptr); }
+static void doTryRollCreature()  { CHECK_READY(); refreshInstances(); if (fn_TryRollCreature   && inst_RewardsControl)      fn_TryRollCreature(inst_RewardsControl, nullptr); }
+static void doCycleInvincible()  { CHECK_READY(); refreshInstances(); if (fn_CycleInvincible   && inst_CreativeMode)        fn_CycleInvincible(inst_CreativeMode, nullptr); }
+static void doCycleInstaKill()   { CHECK_READY(); refreshInstances(); if (fn_CycleInstaKill    && inst_CreativeMode)        fn_CycleInstaKill(inst_CreativeMode, nullptr); }
+static void doCycleEnemySee()    { CHECK_READY(); refreshInstances(); if (fn_CycleEnemySee     && inst_CreativeMode)        fn_CycleEnemySee(inst_CreativeMode, nullptr); }
+static void doSetPetLevel(int v) { CHECK_READY(); refreshInstances(); if (fn_SetLevel          && inst_ConsoleControl)      fn_SetLevel(inst_ConsoleControl, v, nullptr); }
+
 static void doGiveItem(const char* name, int count) {
     CHECK_READY();
     refreshInstances();
     if (fn_GiveItem && inst_inventory_ctr && fn_il2cpp_string_new)
         fn_GiveItem(inst_inventory_ctr, mkstr(name), count, nullptr, true, nullptr);
-}
-static void doGenLootChest() {
-    CHECK_READY();
-    refreshInstances();
-    if (fn_GenLootChest && inst_LootControl)
-        fn_GenLootChest(inst_LootControl, nullptr, nullptr);
-}
-static void doAddManyLoots() {
-    CHECK_READY();
-    refreshInstances();
-    if (fn_AddManyLoots && inst_LootControl)
-        fn_AddManyLoots(inst_LootControl, 5, 10, nullptr, 3, 6, nullptr, nullptr, nullptr);
-}
-static void doTryRollCreature() {
-    CHECK_READY();
-    refreshInstances();
-    if (fn_TryRollCreature && inst_RewardsControl)
-        fn_TryRollCreature(inst_RewardsControl, nullptr);
 }
 static void doIncCompanionExp(int v) {
     CHECK_READY();
@@ -205,30 +197,6 @@ static void doIncCompanionExp(int v) {
     void* first = *(void**)((uintptr_t)*arr);
     if (!first) return;
     fn_IncCompanionExp(inst_CompanionController, v, first, nullptr);
-}
-static void doSetPetLevel(int v) {
-    CHECK_READY();
-    refreshInstances();
-    if (fn_SetLevel && inst_ConsoleControl)
-        fn_SetLevel(inst_ConsoleControl, v, nullptr);
-}
-static void doCycleInvincible() {
-    CHECK_READY();
-    refreshInstances();
-    if (fn_CycleInvincible && inst_CreativeMode)
-        fn_CycleInvincible(inst_CreativeMode, nullptr);
-}
-static void doCycleInstaKill() {
-    CHECK_READY();
-    refreshInstances();
-    if (fn_CycleInstaKill && inst_CreativeMode)
-        fn_CycleInstaKill(inst_CreativeMode, nullptr);
-}
-static void doCycleEnemySee() {
-    CHECK_READY();
-    refreshInstances();
-    if (fn_CycleEnemySee && inst_CreativeMode)
-        fn_CycleEnemySee(inst_CreativeMode, nullptr);
 }
 
 // ===== Backup/Restore =====
@@ -264,7 +232,7 @@ static void backupInventory() {
         std::string src = base+"/"+s+"/the_inventory", dst = bdir+s+"_the_inventory";
         if (fileExists(src.c_str())) copyFile(src.c_str(), dst.c_str());
     }
-    showToast("✅ Backup selesai!");
+    showToast("Backup selesai!");
 }
 static void loadBackup() {
     std::string base = getExternalFilesDir(); if (base.empty()) return;
@@ -274,7 +242,7 @@ static void loadBackup() {
         std::string src = bdir+s+"_the_inventory", dst = base+"/"+s+"/the_inventory";
         if (fileExists(src.c_str())) copyFile(src.c_str(), dst.c_str());
     }
-    showToast("✅ Backup di-load!");
+    showToast("Backup di-load!");
 }
 
 // ===== JNI Exports =====
@@ -299,7 +267,6 @@ Java_com_android_support_Loader_GetFeatureList(JNIEnv* env, jobject obj) {
         "Button_Apply Level",              // 4
         "SeekBar_Set Skill Points_0_500",  // 5
         "Button_Apply Skill Points",       // 6
-
         "Category_🎁 Give Item",
         "SeekBar_Coins_1_9999",            // 8
         "Button_Give Coins",               // 9
@@ -309,27 +276,22 @@ Java_com_android_support_Loader_GetFeatureList(JNIEnv* env, jobject obj) {
         "Button_Give Wood",                // 13
         "SeekBar_Stone_1_999",             // 14
         "Button_Give Stone",               // 15
-
         "Category_🎲 Loot & Random",
         "Button_Generate Chest Loot",      // 17
         "Button_Roll Random Creature",     // 18
         "Button_Add Many Loots",           // 19
-
         "Category_🐾 Companion",
         "SeekBar_Add Pet EXP_1_99999",     // 21
         "Button_Give EXP to Pet",          // 22
         "SeekBar_Set Pet Level_1_100",     // 23
         "Button_Apply Pet Level",          // 24
-
         "Category_⚔️ God Mode",
         "ButtonOnOff_Toggle Invincible",   // 26
         "ButtonOnOff_Toggle Insta Kill",   // 27
         "ButtonOnOff_Mobs Ignore Player",  // 28
-
         "Category_💾 Backup & Restore",
         "Button_Backup Inventory",         // 30
         "Button_Load Backup",              // 31
-
         "WhatsApp_6281241462583_Chat Owner",
         "Hide_Hide Icon",
         "Close_Close Menu",
@@ -350,7 +312,6 @@ Java_com_android_support_Loader_Changes(JNIEnv* env, jobject obj, jint feature, 
         case 4:  doSetLevel(val_level);       break;
         case 5:  val_skillpts = value; break;
         case 6:  doSetSkillPts(val_skillpts); break;
-
         case 8:  val_coin  = value; break;
         case 9:  doGiveItem("coin",  val_coin);  break;
         case 10: val_gem   = value; break;
@@ -359,23 +320,18 @@ Java_com_android_support_Loader_Changes(JNIEnv* env, jobject obj, jint feature, 
         case 13: doGiveItem("wood",  val_wood);  break;
         case 14: val_stone = value; break;
         case 15: doGiveItem("stone", val_stone); break;
-
         case 17: doGenLootChest();    break;
         case 18: doTryRollCreature(); break;
         case 19: doAddManyLoots();    break;
-
         case 21: val_comp_exp = value; break;
         case 22: doIncCompanionExp(val_comp_exp); break;
         case 23: val_pet_lvl  = value; break;
         case 24: doSetPetLevel(val_pet_lvl); break;
-
         case 26: doCycleInvincible(); break;
         case 27: doCycleInstaKill();  break;
         case 28: doCycleEnemySee();   break;
-
         case 30: backupInventory(); break;
         case 31: loadBackup();      break;
-
         default: break;
     }
 }
@@ -384,16 +340,20 @@ Java_com_android_support_Loader_Changes(JNIEnv* env, jobject obj, jint feature, 
 
 // ===== Hack Thread =====
 void* hack_thread(void*) {
-    showToast("⏳ Menginisialisasi libil2cpp...");
+    // Tunggu gContext di-set dari Java side dulu
+    int wait = 0;
+    while (!gContext && wait < 30) { sleep(1); wait++; }
+
+    showToast("Menginisialisasi libil2cpp...");
 
     do { sleep(1); } while (!isLibraryLoaded(libName));
 
-    showToast("📦 libil2cpp terdeteksi, loading...");
-    sleep(2); // beri waktu game init
+    showToast("libil2cpp terdeteksi, mohon tunggu...");
+    sleep(2);
 
     void* handle = dlopen(libName, RTLD_NOLOAD);
     if (!handle) {
-        showToast("❌ Gagal buka libil2cpp!");
+        showToast("Gagal buka libil2cpp!");
         return nullptr;
     }
 
@@ -425,7 +385,7 @@ void* hack_thread(void*) {
     fn_CycleEnemySee     = (CycleEnemiesCanSeeYou_t)getAbsoluteAddress(libName, 0xB085F0);
 
     gLibReady = true;
-    showToast("✅ libil2cpp berhasil di-load! Mod siap.");
+    showToast("Mod siap digunakan!");
 
     return nullptr;
 }
