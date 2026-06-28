@@ -30,6 +30,15 @@ public class Loader
     native String setHeadingText();
 	public static native void initNativeContext(Context context);
 	
+	public static void showToastFromNative(final Context ctx, final String msg) {
+		android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+		handler.post(new Runnable() {
+			public void run() {
+				android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_SHORT).show();
+			}
+		});
+	}
+
 	public static void Start(final Context context)
 	{
         System.loadLibrary("DarkTeam");
@@ -400,4 +409,5 @@ public class Loader
 		});
 		panel.addView(btn);
 	}
-}
+				}
+			
